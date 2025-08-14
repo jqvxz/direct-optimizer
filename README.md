@@ -3,7 +3,7 @@
 ## DirectOptimizer - Intro
 
 This will replace the old icoptimizer-remake with a faster and leightweight alternative.
-The project will include better customizability, faster UI, more options and and install tab.
+The project will include better customizability, faster UI, more options and an install tab.
 
 
 ## Features
