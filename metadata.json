@@ -1,0 +1,7 @@
+
+{
+  "name": "DIRECT-optimizer advanced",
+  "description": "An advanced Tauri-based Windows optimizer, tweaker, and debloater with a developer-focused UI.",
+  "requestFramePermissions": [],
+  "prompt": ""
+}

@@ -1,0 +1,28 @@
+{
+  "package": {
+    "productName": "Direct Optimizer",
+    "version": "0.1.0",
+    "description": "An advanced Tauri-based Windows optimizer, tweaker, and debloater.",
+    "authors": ["you"]
+  },
+  "tauri": {
+    "bundle": {
+      "active": true,
+      "identifier": "com.direct.optimizer",
+      "targets": ["msi"]
+    },
+    "windows": [
+      {
+        "title": "Direct Optimizer",
+        "width": 800,
+        "height": 600,
+        "resizable": true
+      }
+    ],
+    "allowlist": {
+      "shell": {
+        "all": true
+      }
+    }
+  }
+}

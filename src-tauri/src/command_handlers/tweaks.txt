@@ -1,0 +1,160 @@
+use crate::models::{Tweak, TweakCategory};
+use crate::commands::{run_command, run_powershell};
+use winreg::enums::*;
+use winreg::RegKey;
+use tauri::AppHandle;
+
+fn get_hkcu() -> RegKey {
+    RegKey::predef(HKEY_CURRENT_USER)
+}
+
+fn get_hklm() -> RegKey {
+    RegKey::predef(HKEY_LOCAL_MACHINE)
+}
+
+fn check_reg_key_value(path: &str, key: &str, expected_value: u32) -> bool {
+    let hklm_path = get_hklm().open_subkey(path);
+    if let Ok(reg_path) = hklm_path {
+        if let Ok(value) = reg_path.get_value::<u32, _>(key) {
+            return value == expected_value;
+        }
+    }
+
+    let hkcu_path = get_hkcu().open_subkey(path);
+    if let Ok(reg_path) = hkcu_path {
+        if let Ok(value) = reg_path.get_value::<u32, _>(key) {
+            return value == expected_value;
+        }
+    }
+    
+    false
+}
+
+
+fn set_reg_key_value(path: &str, key: &str, value: u32, use_hklm: bool) -> Result<(), std::io::Error> {
+    let root = if use_hklm { get_hklm() } else { get_hkcu() };
+    let (key_handle, _) = root.create_subkey(path)?;
+    key_handle.set_value(key, &value)?;
+    Ok(())
+}
+
+fn get_all_tweaks() -> Vec<Tweak> {
+    vec![
+        // --- Performance ---
+        Tweak { id: "perf_visual_effects".to_string(), name: "Adjust for Best Performance".to_string(), description: "Disables visual effects like animations and shadows.".to_string(), category: TweakCategory::Performance, applied: None, tweak_type: Some("toggle".to_string()) },
+        Tweak { id: "perf_power_plan".to_string(), name: "Ultimate Performance Power Plan".to_string(), description: "Sets the power plan to favor maximum performance.".to_string(), category: TweakCategory::Performance, applied: None, tweak_type: Some("toggle".to_string()) },
+        Tweak { id: "perf_compatibility_assistant".to_string(), name: "Disable Program Compatibility Assistant".to_string(), description: "Prevents Windows from checking for program compatibility issues.".to_string(), category: TweakCategory::Performance, applied: None, tweak_type: Some("toggle".to_string()) },
+        Tweak { id: "adv_cpu_priority".to_string(), name: "Optimize CPU Priority for Foreground Apps".to_string(), description: "Allocates more CPU resources to the active application.".to_string(), category: TweakCategory::Advanced, applied: None, tweak_type: Some("toggle".to_string()) },
+        
+        // --- Network ---
+        Tweak { id: "net_nagle_algorithm".to_string(), name: "Disable Nagle's Algorithm".to_string(), description: "Reduces latency in some online games and applications by sending packets sooner.".to_string(), category: TweakCategory::Network, applied: None, tweak_type: Some("toggle".to_string()) },
+
+        // --- Privacy ---
+        Tweak { id: "privacy_telemetry".to_string(), name: "Disable Telemetry Services".to_string(), description: "Stops Windows from collecting and sending usage data to Microsoft.".to_string(), category: TweakCategory::Privacy, applied: None, tweak_type: Some("toggle".to_string()) },
+        Tweak { id: "privacy_ad_id".to_string(), name: "Disable Advertising ID".to_string(), description: "Prevents apps from using your advertising ID for personalized ads.".to_string(), category: TweakCategory::Privacy, applied: None, tweak_type: Some("toggle".to_string()) },
+        Tweak { id: "privacy_search_suggestions".to_string(), name: "Disable Search Box Suggestions".to_string(), description: "Prevents Windows Search from showing web suggestions.".to_string(), category: TweakCategory::Privacy, applied: None, tweak_type: Some("toggle".to_string()) },
+        Tweak { id: "privacy_error_reporting".to_string(), name: "Disable Error Reporting".to_string(), description: "Stops Windows from prompting to send error reports.".to_string(), category: TweakCategory::Privacy, applied: None, tweak_type: Some("toggle".to_string()) },
+
+        // --- UI ---
+        Tweak { id: "ui_show_file_ext".to_string(), name: "Show File Extensions".to_string(), description: "Makes file extensions (e.g., .txt, .exe) visible.".to_string(), category: TweakCategory::UI, applied: None, tweak_type: Some("toggle".to_string()) },
+        Tweak { id: "ui_dark_mode".to_string(), name: "Enable Dark Mode".to_string(), description: "Sets the default app and system theme to dark.".to_string(), category: TweakCategory::UI, applied: None, tweak_type: Some("toggle".to_string()) },
+        Tweak { id: "ui_sticky_keys".to_string(), name: "Disable Sticky Keys Prompt".to_string(), description: "Disables the accessibility feature popup for Sticky Keys, etc.".to_string(), category: TweakCategory::UI, applied: None, tweak_type: Some("toggle".to_string()) },
+
+        // --- Advanced ---
+        Tweak { id: "adv_disable_win_update".to_string(), name: "Disable Windows Update Service".to_string(), description: "Stops the Windows Update service from running. Warning: This will prevent security updates.".to_string(), category: TweakCategory::Advanced, applied: None, tweak_type: Some("toggle".to_string()) },
+        Tweak { id: "adv_remote_registry".to_string(), name: "Disable Remote Registry Service".to_string(), description: "Disables the service that allows remote users to modify registry settings.".to_string(), category: TweakCategory::Advanced, applied: None, tweak_type: Some("toggle".to_string()) },
+        Tweak { id: "adv_remote_management".to_string(), name: "Disable Remote Management (WinRM)".to_string(), description: "Disables the service for remote command-line administration.".to_string(), category: TweakCategory::Advanced, applied: None, tweak_type: Some("toggle".to_string()) },
+
+        // --- System & Service Repair (Actions) ---
+        Tweak { id: "repair_flush_dns".to_string(), name: "Flush DNS Cache".to_string(), description: "Clears the local DNS resolver cache to fix connectivity issues (ipconfig /flushdns).".to_string(), category: TweakCategory::SystemRepair, applied: None, tweak_type: Some("action".to_string()) },
+        Tweak { id: "repair_reset_winsock".to_string(), name: "Reset Network Adapter (Winsock)".to_string(), description: "Resets the Winsock Catalog to fix network issues (netsh winsock reset).".to_string(), category: TweakCategory::SystemRepair, applied: None, tweak_type: Some("action".to_string()) },
+        Tweak { id: "repair_reset_ip".to_string(), name: "Reset TCP/IP Stack".to_string(), description: "Resets the TCP/IP stack to its default state (netsh int ip reset).".to_string(), category: TweakCategory::SystemRepair, applied: None, tweak_type: Some("action".to_string()) },
+        Tweak { id: "repair_renew_ip".to_string(), name: "Release & Renew IP Address".to_string(), description: "Gets a new IP address from your router (ipconfig /release & /renew).".to_string(), category: TweakCategory::SystemRepair, applied: None, tweak_type: Some("action".to_string()) },
+        Tweak { id: "repair_reset_firewall".to_string(), name: "Reset Windows Firewall".to_string(), description: "Restores Windows Firewall settings to their default configuration.".to_string(), category: TweakCategory::SystemRepair, applied: None, tweak_type: Some("action".to_string()) },
+        Tweak { id: "repair_restart_explorer".to_string(), name: "Restart Windows Explorer".to_string(), description: "Terminates and restarts the explorer.exe process to fix shell issues.".to_string(), category: TweakCategory::SystemRepair, applied: None, tweak_type: Some("action".to_string()) },
+        Tweak { id: "repair_restart_audio".to_string(), name: "Restart Audio Service".to_string(), description: "Restarts the Windows Audio service to resolve sound problems.".to_string(), category: TweakCategory::SystemRepair, applied: None, tweak_type: Some("action".to_string()) },
+        Tweak { id: "repair_sfc_scan".to_string(), name: "Run System File Check".to_string(), description: "Scans and repairs protected system files (sfc /scannow). This may take a while.".to_string(), category: TweakCategory::SystemRepair, applied: None, tweak_type: Some("action".to_string()) },
+    ]
+}
+
+#[tauri::command]
+pub fn get_tweaks() -> Vec<Tweak> {
+    // This is not async because getting the state should be fast and not block.
+    // The PowerShell checks here are synchronous and could be slow, but we accept this for now.
+    // A more advanced implementation would use `tauri::async_runtime::spawn` to do this in the background.
+    let mut tweaks = get_all_tweaks();
+    for tweak in &mut tweaks {
+        if tweak.tweak_type == Some("toggle".to_string()) {
+            tweak.applied = Some(match tweak.id.as_str() {
+                // Performance
+                "perf_visual_effects" => check_reg_key_value("Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\VisualEffects", "VisualFXSetting", 2),
+                "perf_power_plan" => crate::commands::run_powershell(&tauri::AppHandle::dummy(), "powercfg /getactivescheme").map(|s| s.contains("e9a42b02-d5df-448d-aa00-03f14749eb61")).unwrap_or(false),
+                "perf_compatibility_assistant" => check_reg_key_value("SOFTWARE\\Policies\\Microsoft\\Windows\\AppCompat", "DisablePCA", 1),
+                "adv_cpu_priority" => check_reg_key_value("SYSTEM\\CurrentControlSet\\Control\\PriorityControl", "Win32PrioritySeparation", 0x26),
+                // Network
+                "net_nagle_algorithm" => check_reg_key_value("SYSTEM\\CurrentControlSet\\Services\\Tcpip\\Parameters\\Interfaces", "TcpAckFrequency", 1), // Simplified check
+                // Privacy
+                "privacy_telemetry" => check_reg_key_value("SOFTWARE\\Policies\\Microsoft\\Windows\\DataCollection", "AllowTelemetry", 0),
+                "privacy_ad_id" => check_reg_key_value("Software\\Microsoft\\Windows\\CurrentVersion\\AdvertisingInfo", "Enabled", 0),
+                "privacy_search_suggestions" => check_reg_key_value("Software\\Policies\\Microsoft\\Windows\\Explorer", "DisableSearchBoxSuggestions", 1),
+                "privacy_error_reporting" => check_reg_key_value("SOFTWARE\\Microsoft\\Windows\\Windows Error Reporting", "Disabled", 1),
+                // UI
+                "ui_show_file_ext" => check_reg_key_value("Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced", "HideFileExt", 0),
+                "ui_dark_mode" => check_reg_key_value("Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize", "AppsUseLightTheme", 0),
+                "ui_sticky_keys" => check_reg_key_value("Control Panel\\Accessibility\\StickyKeys", "Flags", 506),
+                // Advanced
+                "adv_disable_win_update" => crate::commands::run_powershell(&tauri::AppHandle::dummy(), "sc.exe qc wuauserv").map(|s| s.contains("START_TYPE   : 4   DISABLED")).unwrap_or(false),
+                "adv_remote_registry" => crate::commands::run_powershell(&tauri::AppHandle::dummy(), "sc.exe qc RemoteRegistry").map(|s| s.contains("START_TYPE   : 4   DISABLED")).unwrap_or(false),
+                "adv_remote_management" => crate::commands::run_powershell(&tauri::AppHandle::dummy(), "sc.exe qc WinRM").map(|s| s.contains("START_TYPE   : 4   DISABLED")).unwrap_or(false),
+                
+                _ => false,
+            });
+        }
+    }
+    tweaks
+}
+
+pub async fn apply_tweak(app: &AppHandle, id: &str, value: bool) -> Result<(), String> {
+    match id {
+        // Performance
+        "perf_visual_effects" => set_reg_key_value("Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\VisualEffects", "VisualFXSetting", if value { 2 } else { 1 }, false).map_err(|e| e.to_string())?,
+        "perf_power_plan" => {
+            let guid = if value { "e9a42b02-d5df-448d-aa00-03f14749eb61" } else { "381b4222-f694-41f0-9685-ff5bb260df2e" }; // Ultimate vs Balanced
+            run_command(app, "powercfg", vec!["/setactive", guid]).await.map(|_| ())?;
+        },
+        "perf_compatibility_assistant" => set_reg_key_value("SOFTWARE\\Policies\\Microsoft\\Windows\\AppCompat", "DisablePCA", if value { 1 } else { 0 }, true).map_err(|e| e.to_string())?,
+        "adv_cpu_priority" => set_reg_key_value("SYSTEM\\CurrentControlSet\\Control\\PriorityControl", "Win32PrioritySeparation", if value { 0x26 } else { 0x2 }, true).map_err(|e| e.to_string())?,
+        
+        // Network (This is a simplified script. A real implementation would iterate all network interfaces)
+        "net_nagle_algorithm" => {
+            let script = if value { // Disable Nagle
+                "Get-NetAdapter | ForEach-Object { Set-ItemProperty -Path \"HKLM:\\SYSTEM\\CurrentControlSet\\Services\\Tcpip\\Parameters\\Interfaces\\$($_.InterfaceGuid)\" -Name TcpAckFrequency -Value 1 -Force; Set-ItemProperty -Path \"HKLM:\\SYSTEM\\CurrentControlSet\\Services\\Tcpip\\Parameters\\Interfaces\\$($_.InterfaceGuid)\" -Name TCPNoDelay -Value 1 -Force }"
+            } else { // Enable Nagle
+                "Get-NetAdapter | ForEach-Object { Remove-ItemProperty -Path \"HKLM:\\SYSTEM\\CurrentControlSet\\Services\\Tcpip\\Parameters\\Interfaces\\$($_.InterfaceGuid)\" -Name TcpAckFrequency -ErrorAction SilentlyContinue; Remove-ItemProperty -Path \"HKLM:\\SYSTEM\\CurrentControlSet\\Services\\Tcpip\\Parameters\\Interfaces\\$($_.InterfaceGuid)\" -Name TCPNoDelay -ErrorAction SilentlyContinue }"
+            };
+            run_powershell(app, script).await.map(|_| ())?;
+        }
+
+        // Privacy
+        "privacy_telemetry" => set_reg_key_value("SOFTWARE\\Policies\\Microsoft\\Windows\\DataCollection", "AllowTelemetry", if value { 0 } else { 1 }, true).map_err(|e| e.to_string())?,
+        "privacy_ad_id" => set_reg_key_value("Software\\Microsoft\\Windows\\CurrentVersion\\AdvertisingInfo", "Enabled", if value { 0 } else { 1 }, false).map_err(|e| e.to_string())?,
+        "privacy_search_suggestions" => set_reg_key_value("Software\\Policies\\Microsoft\\Windows\\Explorer", "DisableSearchBoxSuggestions", if value { 1 } else { 0 }, false).map_err(|e| e.to_string())?,
+        "privacy_error_reporting" => set_reg_key_value("SOFTWARE\\Microsoft\\Windows\\Windows Error Reporting", "Disabled", if value { 1 } else { 0 }, true).map_err(|e| e.to_string())?,
+        
+        // UI
+        "ui_show_file_ext" => set_reg_key_value("Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced", "HideFileExt", if value { 0 } else { 1 }, false).map_err(|e| e.to_string())?,
+        "ui_dark_mode" => {
+            set_reg_key_value("Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize", "AppsUseLightTheme", if value { 0 } else { 1 }, false)?;
+            set_reg_key_value("Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize", "SystemUsesLightTheme", if value { 0 } else { 1 }, false).map_err(|e| e.to_string())?;
+        },
+        "ui_sticky_keys" => set_reg_key_value("Control Panel\\Accessibility\\StickyKeys", "Flags", if value { 506 } else { 511 }, false).map_err(|e| e.to_string())?,
+        
+        // Advanced
+        "adv_disable_win_update" => run_command(app, "sc.exe", vec!["config", "wuauserv", "start=", if value { "disabled" } else { "auto" }]).await.map(|_| ())?,
+        "adv_remote_registry" => run_command(app, "sc.exe", vec!["config", "RemoteRegistry", "start=", if value { "disabled" } else { "auto" }]).await.map(|_| ())?,
+        "adv_remote_management" => run_command(app, "sc.exe", vec!["config", "WinRM", "start=", if value { "disabled" } else { "auto" }]).await.map(|_| ())?,
+        
+        _ => return Err(format!("Unknown tweak ID: {}", id)),
+    };
+    Ok(())
+}
