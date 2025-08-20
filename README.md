@@ -7,6 +7,14 @@ Current - Alpha v0.1.0 / May not work, instable
 This will replace the old icoptimizer-remake with a faster and cleaner alternative.
 The project will include better customizability, faster UI, more options and an install tab.
 
+## Run current (alpha) version
+
+```CMD
+git clone https://github.com/jqvxz/direct-optimizer
+cd direct-optimizer
+npm install
+npm start
+```
 
 ## Features
 
