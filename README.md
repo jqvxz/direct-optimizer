@@ -1,4 +1,6 @@
-# This project will release soon
+## This is an alpha built and not guaranteed to run or work as intended
+
+Current - Alpha v0.1.0 / May not work, instable
 
 ## DirectOptimizer - Intro
 
