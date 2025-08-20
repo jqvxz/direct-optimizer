@@ -1,0 +1,8 @@
+/*
+  NOTE: For this to work completely offline, you should download the Fira Code font files
+  and place them in a local 'fonts' directory. Then, you would use @font-face rules
+  to import them here, replacing the need for a CDN.
+*/
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
