@@ -26,6 +26,8 @@ npm start
 ## ToDo
 
 - Add admin launch
+- Fix some options (resetting UI after execute)
+- Remake / Change general "Execute" bar 
 
 ## Authors
 
