@@ -27,7 +27,8 @@ npm start
 
 - Add admin launch
 - Fix some options (resetting UI after execute)
-- Remake / Change general "Execute" bar 
+- Remake / Change general "Execute" bar
+- Make sure task continues when switching tabs / Make sure animation continues...
 
 ## Authors
 
